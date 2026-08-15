@@ -1,0 +1,19 @@
+{
+  "name": "carry-quest-portable",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "play": "node scripts/serve.mjs --open",
+    "play:mobile": "node scripts/serve.mjs --host 0.0.0.0",
+    "dev": "node scripts/serve.mjs --root . --host 0.0.0.0",
+    "build": "node scripts/build.mjs && node scripts/size.mjs",
+    "preview": "node scripts/serve.mjs --host 0.0.0.0",
+    "size": "node scripts/size.mjs",
+    "test": "node --test",
+    "verify": "node --test && node scripts/build.mjs && node scripts/size.mjs"
+  }
+}
