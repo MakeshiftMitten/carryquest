@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=22.13.0"
+    "node": ">=24 <25"
   },
   "scripts": {
     "play": "node scripts/serve.mjs --open",
@@ -14,7 +14,9 @@
     "build": "node scripts/build.mjs && node scripts/size.mjs",
     "preview": "node scripts/serve.mjs --host 0.0.0.0",
     "size": "node scripts/size.mjs",
+    "check": "node scripts/check.mjs",
     "test": "node --test",
-    "verify": "node --test && node scripts/build.mjs && node scripts/size.mjs"
+    "test:server": "node scripts/server-smoke.mjs",
+    "verify": "node --test && node scripts/build.mjs && node scripts/check.mjs && node scripts/server-smoke.mjs && node scripts/size.mjs"
   }
 }

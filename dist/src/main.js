@@ -1,4 +1,3 @@
-import "./style.css";
 import {applyAction,expectedStep,placeName,problemForRoom,startProblem} from "./math-engine.js";
 
 const ROOMS=["Moss Gate","Echo Cave","Carry Tower","Zero Vault","Citadel"];
@@ -12,8 +11,9 @@ const SEED=0xc0ffee,STORAGE="carry-quest-events-v1",root=document.querySelector(
 const clock=()=>globalThis.performance?.now()??0;
 const freshSeed=()=>Date.now()>>>0;
 const newRun=(seed=SEED)=>({id:`run-${seed.toString(36)}`,seed,room:1,hp:6,maxHp:6,shield:0,bonus:0,score:0});
+const requestedRoom=Math.max(1,Math.min(5,Number(new URLSearchParams(location.search).get("room"))||1));
 
-let run=newRun(),work=startProblem(problemForRoom(1,SEED)),mistakes=0,feedback="Start on the right.",tone="neutral",shake=false,hit=false,locked=false,overlay=null,insights=false;
+let run={...newRun(),room:requestedRoom},work=startProblem(problemForRoom(requestedRoom,SEED)),mistakes=0,feedback="Start on the right.",tone="neutral",shake=false,hit=false,locked=false,overlay=null,insights=false;
 let startedAt=clock(),stepStartedAt=startedAt,events=loadEvents();
 
 function loadEvents(){
