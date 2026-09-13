@@ -2,6 +2,7 @@
 import {transform} from "esbuild";
 import {minify} from "terser";
 import {compactSelectors} from "./selectors.mjs";
+import {Packer} from "roadroller";
 const root=new URL("../",import.meta.url);
 const read=async name=>(await readFile(new URL(name,root),"utf8")).replace(/^\uFEFF/,"");
 let html=(await read("index.html")).replace(/\s*<meta name="(?:description|theme-color)"[^>]*>/g,"");
@@ -14,7 +15,14 @@ const mangleProps=/^(activeColumn|originalTop|pendingCarry|carryDial|leadingCarr
 const compact=compactSelectors(styles);
 const [{code:css},{code:js}]=await Promise.all([transform(compact(styles),{loader:"css",minify:true}),transform(compact(code),{loader:"js",minify:true,format:"iife",target:"es2022",charset:"utf8",mangleProps})]);
 const optimized=await minify(js,{module:true,compress:{passes:3},mangle:true,format:{comments:false}});
-html=html.replace(/\s*<link[^>]+>/g,"").replace('</head>',`<style>${css}</style></head>`).replace(/<script[^>]*><\/script>/,()=>`<script type="module">${optimized.code}</script>`);
+// Pack styles with the game so both share the same compression dictionary.
+// Keep the decoder's memory bounded for phones; all data stays in this HTML.
+const payload='document.head.appendChild(document.createElement("style")).textContent='+JSON.stringify(css)+';'+optimized.code;
+const packer=new Packer([{data:payload,type:'js',action:'eval'}],{maxMemoryMB:32});
+await packer.optimize(1);
+const {firstLine,secondLine}=packer.makeDecoder();
+const packed=await minify(firstLine+secondLine,{compress:false,mangle:false,format:{inline_script:true,comments:false}});
+html=html.replace(/\s*<link[^>]+>/g,"").replace('</head>','<style>body{margin:0;background:#20192f}</style></head>').replace(/<script[^>]*><\/script>/,()=>`<script type="module">${packed.code}</script>`);
 await mkdir(new URL("dist/",root),{recursive:true});
 await writeFile(new URL("dist/index.html",root),html);
 console.log("Built self-contained dist/index.html.");

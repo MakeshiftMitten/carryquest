@@ -60,6 +60,7 @@ function board(){
       <div class="digit-row"><b class="operator">${work.problem.operation}</b><span></span>${lower}</div>
       <div class="sum-line"></div><div class="digit-row">${answer}</div>
     </div>
+    <div class="swipe-buttons">${['up','down'].map((direction,i)=>'<button data-swipe="'+direction+'" aria-label="Swipe '+direction+'" '+(locked||expected?.kind!=='swipe'?'disabled':'')+'>'+(i?'↓':'↑')+'</button>').join('')}</div>
   </section>`;
 }
 
@@ -79,7 +80,7 @@ function horn(){return '<div class="horn" aria-label="Horn: '+run.horn.length+' 
 function overworld(){
   let lines="";
   for(let row=0;row<worlds.length-1;row++)for(const n of worlds[row])for(const next of worlds[row+1])if(Math.abs(n.lane-next.lane)<=1)lines+='<line x1="'+n.x+'" y1="'+n.y+'" x2="'+next.x+'" y2="'+next.y+'"/>';
-  return '<section class="route"><div class="horn-heading">'+horn()+'<div><h1>Rainbow trail</h1><p>'+run.horn.length+'/7 horn colors'+'</p><small>Row '+run.room+' · reach ±'+run.reach+' · start Q'+(run.jump+1)+'</small></div></div><div class="star-map"><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">'+lines+'</svg>'+worlds.flat().map(n=>'<button class="planet difficulty-'+(levelScore(n)<9?0:levelScore(n)<14?1:2)+(pathTaken[n.stage]===n.lane?' visited':'')+'" style="left:'+n.x+'%;top:'+n.y+'%" data-world="'+n.lane+'" '+(reachable(n)?'':'disabled')+' aria-label="Row '+(n.stage+1)+', '+n.theme+', score '+levelScore(n)+', '+n.pieces.map(i=>COLORS[i]).join(' and ')+'"><b>'+n.theme+'</b><small>'+levelScore(n)+(n.challenge?' ★':'')+'</small><span class="pieces">'+pieceDots(n.pieces)+'</span></button>').join('')+'</div><small>★ Two colors · tap for rules.</small></section>';
+  return '<section class="route"><div class="horn-heading">'+horn()+'<div><h1>Rainbow trail</h1><p>'+run.horn.length+'/7 horn colors'+'</p><small>Row '+run.room+' · reach ±'+run.reach+' · start Q'+(run.jump+1)+'</small></div></div><div class="map-window"><div class="star-map"><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">'+lines+'</svg>'+worlds.flat().map(n=>'<button class="planet difficulty-'+(levelScore(n)<9?0:levelScore(n)<14?1:2)+(pathTaken[n.stage]===n.lane?' visited':'')+'" style="left:'+n.x+'%;top:'+n.y+'%" data-world="'+n.lane+'" '+(reachable(n)?'':'disabled')+' aria-label="Row '+(n.stage+1)+', '+n.theme+', score '+levelScore(n)+', '+n.pieces.map(i=>COLORS[i]).join(' and ')+'"><b>'+n.theme+'</b><small>'+levelScore(n)+(n.challenge?' ★':'')+'</small><span class="pieces">'+pieceDots(n.pieces)+'</span></button>').join('')+'</div></div><small>★ Two colors · tap for rules.</small></section>';
 }
 function home(){return '<section class="start"><div class="ship">🦄</div><h1>Carry Quest</h1><p>Build your rainbow unicorn horn.</p><button data-restart>Start</button><button data-open-insights>Stats</button><button data-login>Login</button><small>Playing as '+escapeHtml(activeUser().username)+'</small></section>';}
 
@@ -104,14 +105,15 @@ function togglePause(){
 }
 function overlayDialog(){
   if(overlay==='pause')return '<div class="backdrop"><section class="reward rules" role="dialog" aria-modal="true" aria-label="Paused"><h2>PAUSED</h2>'+rulesList()+'<button data-pause>Resume</button></section></div>';
-  if(overlay==="briefing")return '<div class="backdrop perks"><section class="reward rules" role="dialog" aria-modal="true"><p>'+node.pieces.map(i=>COLORS[i]).join(' + ')+' horn piece'+(node.challenge?'s · CHALLENGE':'')+'</p><h2>'+node.theme+' · '+levelScore(node)+' points</h2>'+rulesList()+'<div><button data-enter>Enter level · start Q'+(run.jump+1)+'</button><button data-map>Back to map</button></div></section></div>';
+  if(overlay==="briefing")return '<div class="backdrop briefing"><section class="reward rules" role="dialog" aria-modal="true"><p>'+node.pieces.map(i=>COLORS[i]).join(' + ')+' horn piece'+(node.challenge?'s · CHALLENGE':'')+'</p><h2>'+node.theme+' · '+levelScore(node)+' points</h2>'+rulesList()+'<div><button data-enter>Enter level · start Q'+(run.jump+1)+'</button><button data-map>Back to map</button></div></section></div>';
   if(overlay==="relic")return '<div class="backdrop perks"><section class="reward" role="dialog" aria-modal="true"><p>LEVEL CLEARED · '+levelScore(node)+' − '+mistakes+' mistakes = '+(levelScore(node)-mistakes)+' points · '+run.hp+'/3 lives</p><h2>Choose a perk</h2><div>'+offered.map((relic,i)=>'<button data-relic="'+relic.id+'"><i>'+(i+1)+'</i><span><strong>'+relic.name+'</strong><small>'+(relic.id==='snack'?'Lives: '+run.hp+'/3 → '+Math.min(3,run.hp+1)+'/3':relic.copy)+'</small></span></button>').join('')+'</div></section></div>';
   if(overlay)return '<div class="backdrop"><section class="result" role="dialog" aria-modal="true">'+horn()+'<h2>'+(overlay==='boss'?'Boss fight':overlay==='win'?'Rainbow victory!':overlay==='lose'?'Out of lives':'Level lost')+'</h2>'+(overlay==='boss'?'<p>10 questions</p><p>'+bossRule()+'</p>':'')+'<p>'+run.hp+' lives · '+run.score+' points</p><button '+(overlay==='boss'?'data-boss':overlay==='failed'?'data-map':'data-restart')+'>'+(overlay==='boss'?'Fight!':overlay==='failed'?'Try another level':'New run')+'</button></section></div>';
   return "";
 }
 
-function render(){
-  root.innerHTML=`<main class="game-shell ${shake?"shake":""}"><div class="game-frame">
+function render(center=false){
+  const scroll=center?undefined:document.querySelector(".map-window")?.scrollTop;
+  root.innerHTML=`<main class="game-shell ${shake?"shake":""}"><div class="game-frame ${screen==='map'?'map-view':''}">
     <div class="user-bar" ${screen==="login"?"":"hidden"}><label>Player <select data-user>${telemetry.data.users.map(user=>`<option value="${user.id}" ${user.id===telemetry.data.activeUserId?"selected":""}>${escapeHtml(user.username)}</option>`).join("")}</select></label><button data-add-user>+ Add user</button></div>
     <header class="topbar"><strong>Carry Quest</strong><button class="insight-button" data-home>Home</button><button class="insight-button" data-sound>${muted?"Sound off":"Sound on"}</button><button class="insight-button" data-open-insights>▥ Insights</button></header>
     ${screen==="map"||screen==="battle"?statusBar():""}
@@ -119,7 +121,9 @@ function render(){
     ${board()}<div class="prompt ${tone}" aria-live="polite"><strong>${promptFor(work)}</strong><span>${feedback}</span></div>
     <section class="keypad" aria-label="Number pad">${[1,2,3,4,5,6,7,8,9,0].map(digit=>`<button data-digit="${digit}" ${locked?"disabled":""}>${digit}</button>`).join("")}</section>`}
   </div>${insights?scopedInsightsDialog():""}${overlayDialog()}</main>`;
-  bindGestures();updateTimer();
+  const map=document.querySelector(".map-window"),planet=document.querySelector(".planet:not(:disabled)");
+  if(map&&planet)map.scrollTop=scroll??planet.offsetTop-map.clientHeight/2;
+  updateTimer();
 }
 
 function begin(){
@@ -232,14 +236,29 @@ function switchUser(id){
 function resumeTimers(){const pause=clock()-pausedAt;deadline+=pause;problemDeadline+=pause;startedAt+=pause;stepStartedAt+=pause;}
 function closeInsights(){resumeTimers();insights=false;render();}
 
-function bindGestures(){
-  document.querySelectorAll(".operand").forEach(button=>{
-    let start=null;
-    button.addEventListener("pointerdown",event=>{start={y:event.clientY,t:clock()};button.setPointerCapture(event.pointerId);});
-    button.addEventListener("pointerup",event=>{if(!start)return;const dy=event.clientY-start.y,duration=clock()-start.t;start=null;if(Math.abs(dy)>=24)act({kind:"swipe",direction:dy<0?"up":"down",column:Number(button.dataset.column)},{distance:Math.round(Math.abs(dy)),duration:Math.round(duration)});});
-    button.addEventListener("pointercancel",()=>{start=null;});
-  });
+function swipe(direction,meta){
+  const step=expectedStep(work);
+  if(step?.kind==="swipe")act({kind:"swipe",direction,column:step.column},meta);
 }
+let drag=null;
+function track(event){
+  if(!drag||event.pointerId!==drag.id)return;
+  const dy=event.clientY-drag.y,dx=event.clientX-drag.x;
+  if(Math.abs(dy)>=24&&Math.abs(dy)>Math.abs(dx)*1.2)drag.direction??=dy<0?"up":"down";
+}
+root.addEventListener("pointerdown",event=>{
+  if(!event.isPrimary||event.button!==0||!event.target.closest(".board")||event.target.closest("[data-swipe]")||locked||overlay||insights)return;
+  event.preventDefault();root.setPointerCapture(event.pointerId);
+  drag={id:event.pointerId,x:event.clientX,y:event.clientY,t:clock(),state:work};
+});
+root.addEventListener("pointermove",track);
+root.addEventListener("pointerup",event=>{
+  if(!drag||event.pointerId!==drag.id)return;
+  track(event);const current=drag;drag=null;
+  if(current.direction&&current.state===work)swipe(current.direction,{distance:Math.round(Math.abs(event.clientY-current.y)),duration:Math.round(clock()-current.t)});
+});
+for(const type of ["pointercancel","lostpointercapture"])root.addEventListener(type,event=>{if(drag?.id===event.pointerId)drag=null;});
+window.addEventListener("resize",()=>{drag=null;render(true);});
 
 root.addEventListener("click",event=>{
   const target=event.target.closest("button,[data-close-insights]");if(!target)return;
@@ -249,6 +268,7 @@ root.addEventListener("click",event=>{
   else if(has("owned")){const r=RELICS.find(r=>r.id===target.dataset.owned);perkInfo=perkInfo===r?null:r;render();}
   else if(has("enter"))enterLevel();
   else if(has("map")){overlay=run.room>10?'boss':null;screen="map";render();}
+  else if(has("swipe"))swipe(target.dataset.swipe);
   else if(has("digit"))act({kind:"digit",digit:Number(target.dataset.digit)});
   else if(has("open-insights")){if(overlay==='pause'||screen==='battle'&&locked&&!overlay)return;pausedAt=clock();insights=true;if(insightScope==='global')loadGlobalMetrics();else render();}
   else if(has("close-insights")&&(target===event.target||target.tagName==="BUTTON"))closeInsights();
@@ -264,7 +284,7 @@ root.addEventListener("click",event=>{
   else if(has("export-run"))exportRun(target.dataset.exportRun);
 });
 
-root.addEventListener("change",event=>{if(event.has("user"))switchUser(event.target.value);});
+root.addEventListener("change",event=>{if(event.target.matches("[data-user]"))switchUser(event.target.value);});
 
 window.addEventListener("keydown",event=>{
   if(insights&&event.key==="Escape"){closeInsights();return;}
@@ -277,8 +297,7 @@ window.addEventListener("keydown",event=>{
   if(screen!=="battle")return;
   if(/^[0-9]$/.test(event.key)){act({kind:"digit",digit:Number(event.key)});return;}
   if(event.key==="ArrowUp"||event.key==="ArrowDown"){
-    event.preventDefault();const expected=expectedStep(work),column=expected?.kind==="swipe"?expected.column:Math.max(0,work.activeColumn);
-    act({kind:"swipe",direction:event.key==="ArrowUp"?"up":"down",column});
+    event.preventDefault();swipe(event.key==="ArrowUp"?"up":"down");
   }
 });
 

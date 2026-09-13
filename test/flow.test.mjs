@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 async function game(){
- const root={innerHTML:'',addEventListener:(k,fn)=>handlers[k]=fn},handlers={},timers=[],storage=new Map(),labels={};let now=0;
+ const root={innerHTML:'',setPointerCapture(){},addEventListener:(k,fn)=>handlers[k]=fn},handlers={},timers=[],storage=new Map(),labels={};let now=0;
  const context=vm.createContext({document:{querySelector:s=>s==='#app'?root:labels[s]??={},querySelectorAll:()=>[]},window:{addEventListener:(k,fn)=>handlers[k]=fn},navigator:{},crypto,performance:{now:()=>now},localStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v)},setTimeout:fn=>timers.push(fn),setInterval(){}});
  const source=(await Promise.all(['math-engine','telemetry-store','world','main'].map(n=>readFile(new URL(`../src/${n}.js`,import.meta.url),'utf8')))).join('\n').replace(/^import .*;\r?\n/gm,'').replace(/^export /gm,'');
  const run=code=>vm.runInContext(code,context),flush=()=>{while(timers.length)timers.shift()();};run(source);
@@ -11,7 +11,8 @@ async function game(){
  const click=(selector,dataset={})=>{const target={dataset,matches:s=>s===selector,closest:()=>target,tagName:'BUTTON'};handlers.click({target});};
  const enter=()=>run('node=worlds[(run.room-1)%10][2];enterLevel()');
  const solve=()=>{let guard=0;while(!run('locked')&&guard++<100)run('act(expectedStep(work))');assert.ok(guard<100);flush();};
- return {root,run,flush,key,click,enter,solve,advance:ms=>{now+=ms;run('updateTimer()');}};
+ const pointer=(type,{x=100,y=150,id=1,primary=true,button=0,backup=false}={})=>handlers[type]({clientX:x,clientY:y,pointerId:id,isPrimary:primary,button,preventDefault(){},target:{closest:s=>s==='[data-swipe]'?backup:s==='.board'}});
+ return {root,run,flush,key,click,enter,solve,pointer,change:id=>handlers.change({target:{matches:s=>s==="[data-user]",value:id}}),advance:ms=>{now+=ms;run('updateTimer()');}};
 }
 test('ten rows, perks, and ten-question boss victory',async()=>{
  const g=await game(),{run,root,solve,key}=g;
@@ -135,4 +136,42 @@ test('three seeded perks remain stable, exclude capped jumpstart and reject unof
  assert.ok(sequences.size>5);run('overlay="relic";render()');assert.equal((g.root.innerHTML.match(/data-relic=/g)||[]).length,3);
  const room=run('run.room'),id=run('offered[2].id');run('chooseRelic(RELICS.find(r=>!offered.includes(r)).id)');assert.equal(run('run.room'),room);
  g.key('4');assert.equal(run('overlay'),'relic');g.key('3');assert.equal(run('run.room'),room+1);assert.equal(run('run.perks["'+id+'"]'),1);
+});
+
+test('board-wide swipes latch direction, ignore noise, and cancel stale touches',async()=>{
+ const g=await game(),{run,pointer}=g;run('restart()');g.enter();
+ run('work=startProblem({top:9,bottom:7,operation:"×",width:1});act({kind:"digit",digit:3})');
+ pointer('pointerdown');pointer('pointermove',{y:100});pointer('pointerup',{y:170});
+ assert.equal(run('work.carryDial'),1,'release wobble must not reverse an upward swipe');
+ pointer('pointerdown');pointer('pointermove',{y:200});pointer('pointerup',{y:120});assert.equal(run('work.carryDial'),0);
+ for(const gesture of ['short','horizontal','cancel','lost','secondary']){
+  pointer('pointerdown');
+  if(gesture==='short')pointer('pointermove',{y:145});
+  if(gesture==='horizontal')pointer('pointermove',{x:240,y:180});
+  if(gesture==='cancel')pointer('pointercancel');
+  if(gesture==='lost')pointer('lostpointercapture');
+  if(gesture==='secondary')pointer('pointermove',{y:70,id:2,primary:false});
+  pointer('pointerup');assert.equal(run('work.carryDial'),0,gesture);
+ }
+ pointer('pointerdown');pointer('pointerdown',{y:250,id:2,primary:false});pointer('pointercancel',{id:2});pointer('pointerup',{y:100});assert.equal(run('work.carryDial'),1);
+ pointer('pointerdown');pointer('pointermove',{y:100});run('begin()');const state=run('JSON.stringify(work)');pointer('pointerup',{y:100});assert.equal(run('JSON.stringify(work)'),state);
+ assert.equal(run('mistakes'),0);
+});
+
+test('backup arrows operate the required column and board swipes ignore result-entry steps',async()=>{
+ const g=await game(),{run,pointer}=g;run('restart()');g.enter();
+ run('work=startProblem({top:9,bottom:7,operation:"×",width:1});render()');
+ pointer('pointerdown');pointer('pointerup',{y:80});assert.equal(run('mistakes'),0);
+ g.key('3');g.click('[data-swipe]',{swipe:'up'});assert.equal(run('work.carryDial'),1);
+ pointer('pointerdown',{backup:true});pointer('pointerup',{y:80});assert.equal(run('work.carryDial'),1);
+ g.click('[data-swipe]',{swipe:'down'});assert.equal(run('work.carryDial'),0);
+ for(let i=0;i<6;i++)g.click('[data-swipe]',{swipe:'up'});assert.equal(run('work.phase'),'leading');
+ assert.match(g.root.innerHTML,/data-swipe="up"[^>]+disabled/);
+ run('work=startProblem({top:302,bottom:178,operation:"−",width:3})');g.click('[data-swipe]',{swipe:'down'});
+ assert.equal(run('work.top[0]'),2);g.click('[data-swipe]',{swipe:'up'});assert.equal(run('work.top[1]'),10);
+});
+
+test('profile selection still switches the active player',async()=>{
+ const g=await game(),id=g.run('telemetry.addUser("Second").id');g.run('telemetry.setActiveUser(telemetry.data.users[0].id)');
+ g.change(id);assert.equal(g.run('telemetry.data.activeUserId'),id);
 });

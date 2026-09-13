@@ -19,7 +19,14 @@ try{
   socket.addEventListener('message',e=>{const m=JSON.parse(e.data);if(m.id){const p=pending.get(m.id);pending.delete(m.id);m.error?p.reject(m.error):p.resolve(m.result);}else if(m.method==='Runtime.exceptionThrown')errors.push(m.params.exceptionDetails);});
   const send=(method,params={})=>new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('CDP timeout: '+method)),5000);pending.set(++id,{resolve:v=>{clearTimeout(timer);resolve(v);},reject});socket.send(JSON.stringify({id,method,params}));});
   const evaluate=async expression=>{const r=await send('Runtime.evaluate',{expression:compact(expression),awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw new Error(JSON.stringify(r.exceptionDetails));return r.result.value;};
+  const checkMap=async()=>assert.equal(await evaluate(`(()=>{
+    const map=document.querySelector('.map-window'),bounds=map.getBoundingClientRect(),planet=document.querySelector('.planet:not(:disabled)').getBoundingClientRect(),horn=document.querySelector('.horn-heading');
+    const top=horn.getBoundingClientRect().top,scroll=map.scrollTop;
+    if(planet.top<bounds.top||planet.bottom>bounds.bottom||bounds.bottom>innerHeight||document.documentElement.scrollHeight>innerHeight+1)return false;
+    map.scrollTop=0;const fixed=horn.getBoundingClientRect().top===top&&scrollY===0;map.scrollTop=scroll;return fixed&&map.scrollHeight>map.clientHeight;
+  })()`),true,'Current row visible; only the map scrolls');
   await send('Runtime.enable');await send('Emulation.setDeviceMetricsOverride',{width:360,height:800,deviceScaleFactor:1,mobile:true});
+  await send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:2});
   await send('Page.navigate',{url:`http://127.0.0.1:${port}/`});await sleep(700);
   assert.equal(await evaluate('!!document.querySelector("[data-restart]")'),true);
   await evaluate('document.querySelector("[data-restart]").click()');
@@ -27,23 +34,40 @@ try{
   assert.equal(await evaluate('document.querySelectorAll(".planet").length'),50);
   assert.equal(await evaluate('document.querySelectorAll(".planet:not(:disabled)").length'),5);
   assert.equal(await evaluate('document.documentElement.scrollWidth<=innerWidth'),true);
+  await checkMap();
+  for(const [width,height] of [[320,568],[360,800]]){
+    await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:true});await sleep(100);await checkMap();
+  }
   const map=(await send('Page.captureScreenshot')).data;await writeFile(join(profile,'map.png'),Buffer.from(map,'base64'));
   await send('Input.dispatchKeyEvent',{type:'keyDown',key:'3',code:'Digit3'});await send('Input.dispatchKeyEvent',{type:'keyUp',key:'3',code:'Digit3'});
   assert.match(await evaluate('document.querySelector(".reward").textContent'),/Level mistake pool/);
+  for(const [width,height] of [[320,568],[800,360],[360,800]]){
+    await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:true});
+    assert.equal(await evaluate(`(()=>{const r=document.querySelector('.briefing .reward').getBoundingClientRect(),button=document.querySelector('[data-enter]').getBoundingClientRect();return r.top===0&&r.left===0&&r.width===innerWidth&&r.height===innerHeight&&button.top>=0&&button.bottom<=innerHeight})()`),true,'Full-screen briefing with visible Start button');
+  }
+  await writeFile(join(profile,'briefing.png'),Buffer.from((await send('Page.captureScreenshot')).data,'base64'));
   assert.ok(await evaluate('parseFloat(getComputedStyle(document.querySelector(".hearts")).fontSize)>=24'));
   await send('Input.dispatchKeyEvent',{type:'keyDown',key:'3',code:'Digit3'});await send('Input.dispatchKeyEvent',{type:'keyUp',key:'3',code:'Digit3'});
   const count=()=>evaluate('Number(document.querySelector(".world-label").textContent.match(/Question \\d+ \\/ (\\d+)/)[1])');
+  let touched=false;
   const solveQuestion=async()=>{
-    await evaluate(`(async()=>{
+    await evaluate(`window.__solveNext=(()=>{
       const a=Number([...document.querySelectorAll('.operand')].filter(n=>Number(n.dataset.column)>=0).map(n=>n.querySelector('span:last-of-type').textContent).join('')),b=Number([...document.querySelectorAll('.lower-digit')].map(n=>n.textContent).join('')),op=document.querySelector('.operator').textContent,answer=op==='×'?a*b:op==='+'?a+b:a-b;
       if(op==='×'&&(b<1||b>9))throw new Error('Multiplier must be single digit');
       const digits=String(answer).padStart(document.querySelectorAll('.answer').length,'0');
-      for(let i=0;i<100&&!document.querySelector('[data-digit]').disabled;i++){
+      return buttons=>{for(let i=0;i<100&&!document.querySelector('[data-digit]').disabled;i++){
         const target=document.querySelector('.answer-target');
         if(target){const index=[...document.querySelectorAll('.answer')].indexOf(target);document.querySelector('[data-digit="'+digits[index]+'"]').click();}
-        else document.body.dispatchEvent(new KeyboardEvent('keydown',{key:document.querySelector('.prompt strong').textContent.includes('↓')?'ArrowDown':'ArrowUp',bubbles:true}));
-      }
+        else{const direction=document.querySelector('.prompt strong').textContent.includes('↓')?'down':'up';if(!buttons)return direction;document.querySelector('[data-swipe="'+direction+'"]').click();}
+      }};
     })()`);
+    const direction=await evaluate('window.__solveNext('+touched+')');
+    if(direction){
+      const point=await evaluate(`(()=>{const r=document.querySelector('.board').getBoundingClientRect();return {x:r.left+10,y:r.top+r.height/2}})()`),sign=direction==='up'?-1:1;
+      const touch=async(type,y)=>send('Input.dispatchTouchEvent',{type,touchPoints:type==='touchEnd'?[]:[{x:point.x,y,radiusX:2,radiusY:2,id:1}]});
+      await touch('touchStart',point.y);await touch('touchMove',point.y+sign*55);await touch('touchMove',point.y-sign*8);await touch('touchEnd');
+      touched=true;await evaluate('window.__solveNext(true)');
+    }
     await sleep(520);
   };
   await evaluate('document.querySelector("[data-pause]").click()');
@@ -69,6 +93,7 @@ try{
   assert.ok(await evaluate('!!document.querySelector(".perk-note")'));
   await evaluate('document.querySelector("[data-owned='+chosen+']").click()');
   for(let row=1;row<10;row++){
+    await checkMap();
     await evaluate('document.querySelector(".planet:not(:disabled)[data-world=\\"2\\"]").click()');
     await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter'});await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter'});
     const n=await count(),start=await evaluate('Number(document.querySelector(".world-label").textContent.match(/Question (\\d+)/)[1])-1');for(let q=start;q<n;q++)await solveQuestion();
@@ -83,13 +108,14 @@ try{
     assert.equal(await evaluate('document.documentElement.scrollWidth<=innerWidth'),true);await solveQuestion();
   }
   assert.match(await evaluate('document.querySelector(".result").textContent'),/Rainbow victory/);
+  assert.equal(touched,true,'Real touch swipe outside digits exercised');
   await evaluate('document.querySelector("[data-open-insights]").click()');
   assert.equal(await evaluate('document.querySelector(".metrics strong").textContent'),'1');
   assert.equal(await evaluate('document.querySelectorAll("[data-export-run]").length'),1);
   assert.deepEqual(errors,[]);
   const artifacts=resolve('browser-check');await import('node:fs/promises').then(m=>m.mkdir(artifacts,{recursive:true}));
-  for(const name of ['map.png','perks.png','pause.png'])await writeFile(join(artifacts,name),await readFile(join(profile,name)));
-  console.log('Production browser passed: keyboard confirmation, variable level lengths, carry dials, perks, ten boss questions scaled by missing colors, victory, no overflow or JS errors. Screenshots: browser-check/');
+  for(const name of ['map.png','perks.png','pause.png','briefing.png'])await writeFile(join(artifacts,name),await readFile(join(profile,name)));
+  console.log('Production browser passed: fixed map header and visible rows, full-screen briefings, touch swipe with release wobble, backup arrows, ten levels and boss victory, no overflow or JS errors. Screenshots: browser-check/');
   await send('Browser.close').catch(()=>{});
 }finally{
   socket?.close();browser.kill();server.kill();await sleep(300);

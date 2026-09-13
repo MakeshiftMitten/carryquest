@@ -1,6 +1,6 @@
 # Carry Quest
 
-Carry Quest is a rainbow-unicorn arithmetic roguelite with a seeded branching map, addition/subtraction/multiplication levels, local player stats, chiptunes, and a 13,000-byte ZIP limit. The game has no runtime dependencies; production builds use esbuild and Terser for minification, compact CSS selectors, and Zopfli for ZIP compression.
+Carry Quest is a rainbow-unicorn arithmetic roguelite with a seeded branching map, addition/subtraction/multiplication levels, local player stats, chiptunes, and a 13,000-byte ZIP limit. The game has no runtime dependencies; production builds use esbuild and Terser for minification, compact CSS selectors, Roadroller packing, and Zopfli for ZIP compression.
 
 Run commands from this workspace root (`C:\source\carry-quest-portable`). On Windows, use `npm.cmd run dev`. Edit `src/`; the production build is self-contained in `dist/index.html`. `npm.cmd run zip` builds `carry-quest.zip` and enforces an archive size strictly below 13,000 bytes.
 
@@ -8,7 +8,7 @@ Run `npm.cmd ci` once before building or verifying. Source development with `npm
 
 ## Levels, horn pieces, and perks
 
-Ten map rows offer five levels each; clear one per row, then face the boss. Normal movement reaches the same lane or one lane left/right. Tap a reachable level or press **1–5** to select its lane, from left to right. Press **Enter** or the **same lane key again** to start from its briefing. Each level shows its operation types, difficulty score, timers, shared mistake allowance, and horn colors before entry. Every map has a connected route collecting all seven colors; challenge levels award two distinct colors. Collected colors appear in the horn on the map.
+Ten map rows offer five levels each; clear one per row, then face the boss. Normal movement reaches the same lane or one lane left/right. Tap a reachable level or press **1–5** to select its lane, from left to right. Press **Enter** or the **same lane key again** to start from its briefing. Each level shows its operation types, difficulty score, timers, shared mistake allowance, and horn colors before entry. The briefing fills the screen on phones and touch devices; its rules scroll while the Start and Back buttons stay available. Every map has a connected route collecting all seven colors; challenge levels award two distinct colors. Collected colors appear in the horn on the map. The header, lives, and horn stay visible while only the map scrolls. Opening the map or rotating the screen brings the current row into view.
 
 Level difficulty = operation points + arithmetic difficulty + speed (1–10) + mistake strictness (1–5) + (questions − 5). Levels have **5–10 questions**, with one point per additional question. Operation presence costs **+ = 1, − = 2, × = 4**, plus one per additional type: two types add 1, all three add 2. Thus +− costs 4, +× costs 6, −× costs 7, and +−× costs 9.
 
@@ -26,7 +26,7 @@ A cleared level awards **its current difficulty minus all mistakes in that attem
 
 Speed is separate: **time = 11 − speed rating**, so speed 1 gives 10 seconds, speed 5 gives 6 seconds, and speed 10 gives 1 second. Every step on a multiplication problem gets **two extra seconds**, including carry adjustments. Its whole-problem budget uses the increased step time too.
 
-Addition and multiplication enforce every carry, including overflow into a new leftmost place. The carry dial starts at zero and shows no target value or preferred direction. Swipe up/down or press ↑/↓ to change it by one, wrapping between 0 and 9. For `9 × 7 = 63`, enter `3`, then swipe up six times (or down four times) to set the carry to six, then enter `6`. For `3 × 7`, enter `1`, adjust the carry to `2`, then enter `2`; simply typing `1, 2` is rejected. Intermediate adjustments are neutral, not mistakes. Subtraction still requires the full borrow chain.
+Addition and multiplication enforce every carry, including overflow into a new leftmost place. The carry dial starts at zero and shows no target value or preferred direction. Swipe up/down or press ↑/↓ to change it by one, wrapping between 0 and 9. For `9 × 7 = 63`, enter `3`, then swipe up six times (or down four times) to set the carry to six, then enter `6`. For `3 × 7`, enter `1`, adjust the carry to `2`, then enter `2`; simply typing `1, 2` is rejected. Intermediate adjustments are neutral, not mistakes. Subtraction still requires the full borrow chain. Swipe anywhere in the problem board to operate the highlighted column, or tap the up/down buttons on its right. A clear vertical movement locks the direction until release, so release wobble cannot reverse a swipe. Short or mostly horizontal motions, cancelled touches, and swipes during digit entry are ignored.
 
 The step timer resets after each accepted digit or carry/borrow adjustment. From row 4 onward, a whole-problem timer also applies: 80% of the required step count × step time, with a minimum of one step time. Each upward carry increment counts separately in that budget. The overall deadline does not reset on steps. The icon strip summarizes the current rules. The large **PAUSE** button freezes both timers and lists the rules, including the shared mistake pool and boss scaling. Tap Resume or press Enter to continue; Escape toggles pause. Opening Stats also pauses both timers. Paused time does not count toward solve time.
 
@@ -146,7 +146,7 @@ Open the printed phone URL from `npm run preview`. That is the exact `dist/` tre
 - `public/` — manifest, icon, and offline worker
 - `dist/` — generated deploy output
 
-The production app stays framework-free. Development scripts and documentation do not count against the 13,000-byte ZIP budget; the actual ZIP containing only the self-contained `dist/index.html` is measured. HTML whitespace is compacted, and JavaScript and CSS are minified and embedded. The uncompressed HTML may exceed 13,000 bytes. Upload `dist/index.html` to any static host, or use `npm run preview` locally; no Node server is needed on the host.
+The production app stays framework-free. Development scripts and documentation do not count against the 13,000-byte ZIP budget; the actual ZIP containing only the self-contained `dist/index.html` is measured. HTML whitespace is compacted, and JavaScript and CSS are minified and packed together. The embedded Roadroller decoder uses eval with a 32 MB decoding memory cap, then installs the styles and starts the game. The uncompressed HTML may exceed 13,000 bytes. Upload `dist/index.html` to any static host, or use `npm run preview` locally; no Node server is needed on the host.
 
 ## Telemetry
 
