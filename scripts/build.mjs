@@ -22,7 +22,7 @@ const packer=new Packer([{data:payload,type:'js',action:'eval'}],{maxMemoryMB:32
 await packer.optimize(1);
 const {firstLine,secondLine}=packer.makeDecoder();
 const packed=await minify(firstLine+secondLine,{compress:false,mangle:false,format:{inline_script:true,comments:false}});
-html=html.replace(/\s*<link[^>]+>/g,"").replace('</head>','<style>body{margin:0;background:#20192f}</style></head>').replace(/<script[^>]*><\/script>/,()=>`<script type="module">${packed.code}</script>`);
+html=html.replace(/\s*<link[^>]+>/g,"").replace('</head>','<style>body{margin:0;background:#fff0f7}</style></head>').replace(/<script[^>]*><\/script>/,()=>`<script type="module">${packed.code}</script>`);
 await mkdir(new URL("dist/",root),{recursive:true});
 await writeFile(new URL("dist/index.html",root),html);
 console.log("Built self-contained dist/index.html.");

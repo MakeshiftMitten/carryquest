@@ -1,1 +1,1 @@
-.user-bar{display:flex;align-items:center;flex-wrap:wrap;gap:6px;font-size:10px}.user-bar select,.user-bar button{max-width:120px;font-size:10px}.scope-tabs{display:flex;gap:6px}.scope-tabs button{flex:1}.scope-tabs .active{background:var(--sun);color:var(--ink)}.run-list{display:grid;gap:6px}.run-list button{text-align:left}
+.scope-tabs{display:flex;gap:6px}.scope-tabs button{flex:1}.scope-tabs .active{background:var(--sun);color:var(--ink)}.run-list{display:grid;gap:6px}.run-list button{text-align:left}

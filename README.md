@@ -8,11 +8,11 @@ Run `npm.cmd ci` once before building or verifying. Source development with `npm
 
 ## Levels, horn pieces, and perks
 
-Ten map rows offer five levels each; clear one per row, then face the boss. Normal movement reaches the same lane or one lane left/right. Tap a reachable level or press **1–5** to select its lane, from left to right. Press **Enter** or the **same lane key again** to start from its briefing. Each level shows its operation types, difficulty score, timers, shared mistake allowance, and horn colors before entry. The briefing fills the screen on phones and touch devices; its rules scroll while the Start and Back buttons stay available. Every map has a connected route collecting all seven colors; challenge levels award two distinct colors. Collected colors appear in the horn on the map. The header, lives, and horn stay visible while only the map scrolls. Opening the map or rotating the screen brings the current row into view.
+Choose Easy (difficulty 0, +1 per row), Medium (5, +1–2 per row), or Hard (10, +2–3 per row) to start. Check **Unlimited trail** for endless levels with three lives and no final boss; a new ten-row map appears after each batch, keeping your horn, perks, score, and path reach. Otherwise, ten map rows offer five levels each; clear one per row, then face the boss. Normal movement reaches the same lane or one lane left/right. Tap a reachable level or press **1–5** to select its lane, from left to right. Press **Enter** or the **same lane key again** to start from its briefing. Each level shows its operation types, difficulty score, timers, shared mistake allowance, and horn colors before entry. The briefing fills the screen on phones and touch devices; its rules scroll while the Start and Back buttons stay available. Every map has a connected route collecting all seven colors; challenge levels award two distinct colors. Collected colors appear in the horn on the map. The header, lives, and horn stay visible while only the map scrolls. Opening the map or rotating the screen brings the current row into view.
 
-Level difficulty = operation points + arithmetic difficulty + speed (1–10) + mistake strictness (1–5) + (questions − 5). Levels have **5–10 questions**, with one point per additional question. Operation presence costs **+ = 1, − = 2, × = 4**, plus one per additional type: two types add 1, all three add 2. Thus +− costs 4, +× costs 6, −× costs 7, and +−× costs 9.
+Level difficulty = (operation points − 1) + (arithmetic difficulty − 1) + (speed − 1) + (mistake strictness − 1) + (questions − 5). Basic addition, arithmetic 1, speed 1, strictness 1, and five questions form the zero-point baseline. Levels have **5–10 questions**, with one point per additional question. Operation presence costs **+ = 1, − = 2, × = 4**, plus one per additional type: two types add 1, all three add 2. Thus +− costs 4, +× costs 6, −× costs 7, and +−× costs 9.
 
-Initial map difficulties rise by two points per row, starting at 7; challenges add two more. Later rows, Road perks, and the boss can raise arithmetic difficulty above 5. Each extra arithmetic point raises the operand limit by 300. Multiplication always uses a single-digit bottom operand (1–9); only its top operand grows.
+Map difficulties grow at the selected mode’s rate; optional challenges after the first row add two more. Later rows, Road perks, and the boss can raise arithmetic difficulty above 5. Each extra arithmetic point raises the operand limit by 300. Multiplication always uses a single-digit bottom operand (1–9); only its top operand grows.
 
 A cleared level awards **its current difficulty minus all mistakes in that attempt**, including forgiven wrong entries and timeouts. Negative awards are possible. The reward panel shows this calculation; failed attempts award no points.
 
@@ -34,13 +34,15 @@ Each level has its advertised 5–10 question positions. Completing a problem ad
 
 After each map level, draw **three distinct perks** from the bag below. Tap one or press its displayed **1, 2, or 3** key. Offers are seeded and stay fixed while viewing them; maxed-out Jumpstart is excluded. The reward panel stays in the bottom half of the screen.
 
+The play screen reserves space for all ten number buttons (at least 44 pixels tall), shrinking the arithmetic board to fit the viewport. Short landscape screens place the keypad beside the problem. Perk icons scroll horizontally when needed, and ten question markers fit a single row.
+
 Owned perks appear as tappable icons beside the larger life counter, with counts for repeated selections. Tap an icon to show or hide its description. Perks apply when chosen; tapping an owned icon does not apply them again.
 
 1. **Quick snack:** restore one life, up to three. Its button shows current and resulting lives; uncollected horn pieces show muted versions of their actual colors.
 2. **Pegacorn:** reach two lanes left/right in the next row, including retries there.
 3. **Jumpstart:** start one question ahead in future levels; stacks three times, up to Q4.
 4. **Hard Road:** add five difficulty points to all remaining map rows. Stacks.
-5. **Easy Road:** subtract five difficulty points from all remaining map rows, to a minimum of four. Stacks. Completed rows stay unchanged.
+5. **Easy Road:** subtract five difficulty points from all remaining map rows, to a minimum of zero. Stacks. Completed rows stay unchanged.
 
 The last row leads to a **ten-question boss fight**, always starting at difficulty **6**. Its increment is the **number of missing horn colors**: each solved question adds it; each failed question subtracts it, to a floor of 6. With a complete horn the increment is zero. This ties difficulty to progress, so repeated setbacks cannot inflate it forever. Road perks do not alter this boss rule. Falling below Q1 loses a life and allows a retry at 6. Jumpstart does not skip boss questions. Solving Q10 wins the run; the boss awards its final difficulty minus mistakes.
 
@@ -62,7 +64,7 @@ No `npm install` is needed. The command:
 
 Put the phone and computer on the same home network, open the printed phone URL once, and leave that tab open while editing. If Windows asks about Node.js network access, allow it on **Private networks**.
 
-Choose Start, then select a connected world on the map. Symbols identify operations; green, yellow, and red indicate easy, medium, and hard. Later sectors increase number ranges. Login selects a local player profile.
+Choose a difficulty to start, then select a connected world on the map. Symbols identify operations; green, yellow, and red borders indicate easy, medium, and hard. The bottom half of each tile shows its horn color, split for two-color challenges. The pastel rainbow palette and rounded system font need no downloaded assets.
 
 ### Recommended two-day cadence
 
@@ -150,7 +152,7 @@ The production app stays framework-free. Development scripts and documentation d
 
 ## Telemetry
 
-Users, runs, and gameplay events stay in this browser as JSON under `carry-quest-store-v2`. Each visible username receives a stable global username made from its first four normalized characters plus an eight-character GUID fragment (for example, `alex-4f8c2a10`). Use the player selector to create or switch users. **Insights** switches among global (this device by default), user lifetime, and current-run metrics; its run archive reviews or exports finished runs. Active runs are saved locally but excluded from every Insights scope and the archive until won, lost, or abandoned. **Export all JSON** downloads the complete schema-v2 store. Existing profiles and schema-v1 events are upgraded automatically.
+Users, runs, and gameplay events stay in this browser as JSON under `carry-quest-store-v2`. Each visible username receives a stable global username made from its first four normalized characters plus an eight-character GUID fragment (for example, `alex-4f8c2a10`). Login and player selection are currently hidden; existing profiles and stats remain stored. **Insights** switches among global (this device by default), user lifetime, and current-run metrics; its run archive reviews or exports finished runs. Active runs are saved locally but excluded from every Insights scope and the archive until won, lost, or abandoned. **Export all JSON** downloads the complete schema-v2 store. Existing profiles and schema-v1 events are upgraded automatically.
 
 The global scope has a provider boundary. To supply aggregate metrics from an API or another source, set `globalThis.carryQuestGlobalMetricsProvider` before `main.js` loads. It must expose a `label` and an async `load()` function returning the same summary shape as `summarize()` in `src/telemetry-store.js`; otherwise the app uses local metrics across all users.
 

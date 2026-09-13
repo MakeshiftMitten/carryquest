@@ -25,12 +25,16 @@ try{
     if(planet.top<bounds.top||planet.bottom>bounds.bottom||bounds.bottom>innerHeight||document.documentElement.scrollHeight>innerHeight+1)return false;
     map.scrollTop=0;const fixed=horn.getBoundingClientRect().top===top&&scrollY===0;map.scrollTop=scroll;return fixed&&map.scrollHeight>map.clientHeight;
   })()`),true,'Current row visible; only the map scrolls');
+  const checkKeypad=async()=>assert.equal(await evaluate(`(()=>{
+    const keys=[...document.querySelectorAll('[data-digit]')];
+    return keys.length===10&&keys.every(k=>{const r=k.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight&&r.left>=0&&r.right<=innerWidth&&r.height>=44&&r.width>=44})&&document.documentElement.scrollHeight<=innerHeight+1;
+  })()`),true,'All ten keypad buttons fit the viewport at touch size: '+await evaluate(`JSON.stringify({width:innerWidth,height:innerHeight,scroll:document.documentElement.scrollHeight,children:[...document.querySelector('.battle-view').children].map(n=>[n.className,n.getBoundingClientRect().toJSON()])})`));
   await send('Runtime.enable');await send('Emulation.setDeviceMetricsOverride',{width:360,height:800,deviceScaleFactor:1,mobile:true});
   await send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:2});
   await send('Page.navigate',{url:`http://127.0.0.1:${port}/`});await sleep(700);
-  assert.equal(await evaluate('!!document.querySelector("[data-restart]")'),true);
-  await evaluate('document.querySelector("[data-restart]").click()');
-  assert.equal(await evaluate('getComputedStyle(document.querySelector(".user-bar")).display'),'none');
+  assert.equal(await evaluate('document.querySelectorAll("[data-mode]").length'),3);
+  assert.equal(await evaluate('!!document.querySelector("[data-login]")'),false);
+  await evaluate('document.querySelectorAll("[data-mode]")[1].click()');
   assert.equal(await evaluate('document.querySelectorAll(".planet").length'),50);
   assert.equal(await evaluate('document.querySelectorAll(".planet:not(:disabled)").length'),5);
   assert.equal(await evaluate('document.documentElement.scrollWidth<=innerWidth'),true);
@@ -49,6 +53,14 @@ try{
   assert.ok(await evaluate('parseFloat(getComputedStyle(document.querySelector(".hearts")).fontSize)>=24'));
   await send('Input.dispatchKeyEvent',{type:'keyDown',key:'3',code:'Digit3'});await send('Input.dispatchKeyEvent',{type:'keyUp',key:'3',code:'Digit3'});
   const count=()=>evaluate('Number(document.querySelector(".world-label").textContent.match(/Question \\d+ \\/ (\\d+)/)[1])');
+  await evaluate(`window.__checkColumns=()=>{
+    const center=n=>{const range=document.createRange();range.selectNodeContents(n);const r=range.getBoundingClientRect();return r.left+r.width/2};
+    const top=[...document.querySelectorAll('.operand')],bottom=[...document.querySelectorAll('.lower-digit')],answer=[...document.querySelectorAll('.answer')];
+    for(let i=1;i<top.length;i++){
+      const digit=top[i].querySelector('span:last-of-type'),x=center(digit);
+      for(const n of [bottom[i-1],answer[i]])if(n.textContent&&Math.abs(center(n)-x)>1)throw new Error('Digit columns misaligned: '+i);
+    }
+  }`);
   let touched=false;
   const solveQuestion=async()=>{
     await evaluate(`window.__solveNext=(()=>{
@@ -56,6 +68,7 @@ try{
       if(op==='×'&&(b<1||b>9))throw new Error('Multiplier must be single digit');
       const digits=String(answer).padStart(document.querySelectorAll('.answer').length,'0');
       return buttons=>{for(let i=0;i<100&&!document.querySelector('[data-digit]').disabled;i++){
+        window.__checkColumns();
         const target=document.querySelector('.answer-target');
         if(target){const index=[...document.querySelectorAll('.answer')].indexOf(target);document.querySelector('[data-digit="'+digits[index]+'"]').click();}
         else{const direction=document.querySelector('.prompt strong').textContent.includes('↓')?'down':'up';if(!buttons)return direction;document.querySelector('[data-swipe="'+direction+'"]').click();}
@@ -71,10 +84,27 @@ try{
     await sleep(520);
   };
   await evaluate('document.querySelector("[data-pause]").click()');
+  for(const [width,height] of [[320,480],[320,568],[360,640],[390,844],[800,360],[568,320],[360,800]]){
+    await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:true});await sleep(100);
+    await checkKeypad();
+    await evaluate('window.__checkColumns()');
+    await evaluate(`(()=>{
+      const track=document.querySelector('.question-track');while(track.children.length<10)track.append(track.firstElementChild.cloneNode(true));
+      const perks=document.querySelector('.owned-perks');for(let i=0;i<5;i++)perks.insertAdjacentHTML('beforeend','<button>★<small>10</small></button>');
+    })()`);
+    await checkKeypad();
+    assert.equal(await evaluate(`(()=>{const b=document.querySelector('.board').getBoundingClientRect();return [...document.querySelectorAll('.digit-row,.swipe-buttons button')].every(n=>{const r=n.getBoundingClientRect();return r.top>=b.top&&r.bottom<=b.bottom&&r.left>=b.left&&r.right<=b.right})})()`),true,'Arithmetic rows and backup arrows fit the shrinking board');
+    if(height===480||height===320){
+      await evaluate('document.querySelector(".backdrop").style.visibility="hidden"');
+      await writeFile(join(profile,height===480?'portrait-small.png':'landscape-small.png'),Buffer.from((await send('Page.captureScreenshot')).data,'base64'));
+      await evaluate('document.querySelector(".backdrop").style.visibility=""');
+    }
+  }
   assert.equal(await evaluate('document.querySelectorAll(".rules li").length'),6);
   await writeFile(join(profile,'pause.png'),Buffer.from((await send('Page.captureScreenshot')).data,'base64'));
   await sleep(1500);assert.ok(await evaluate('!!document.querySelector("[aria-label=Paused]")'));
   await evaluate('document.querySelector(".rules [data-pause]").click()');
+  await writeFile(join(profile,'battle.png'),Buffer.from((await send('Page.captureScreenshot')).data,'base64'));
   await evaluate('document.querySelector("[data-open-insights]").click()');
   assert.equal(await evaluate('document.querySelector(".metrics strong").textContent'),'0');
   assert.equal(await evaluate('document.querySelectorAll("[data-export-run]").length'),0);
@@ -96,6 +126,7 @@ try{
     await checkMap();
     await evaluate('document.querySelector(".planet:not(:disabled)[data-world=\\"2\\"]").click()');
     await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter'});await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter'});
+    await checkKeypad();
     const n=await count(),start=await evaluate('Number(document.querySelector(".world-label").textContent.match(/Question (\\d+)/)[1])-1');for(let q=start;q<n;q++)await solveQuestion();
     assert.equal(await evaluate('document.querySelectorAll("[data-relic]").length'),3);
     await evaluate('document.querySelector("[data-relic]").click()');
@@ -114,8 +145,8 @@ try{
   assert.equal(await evaluate('document.querySelectorAll("[data-export-run]").length'),1);
   assert.deepEqual(errors,[]);
   const artifacts=resolve('browser-check');await import('node:fs/promises').then(m=>m.mkdir(artifacts,{recursive:true}));
-  for(const name of ['map.png','perks.png','pause.png','briefing.png'])await writeFile(join(artifacts,name),await readFile(join(profile,name)));
-  console.log('Production browser passed: fixed map header and visible rows, full-screen briefings, touch swipe with release wobble, backup arrows, ten levels and boss victory, no overflow or JS errors. Screenshots: browser-check/');
+  for(const name of ['map.png','perks.png','pause.png','briefing.png','battle.png','portrait-small.png','landscape-small.png'])await writeFile(join(artifacts,name),await readFile(join(profile,name)));
+  console.log('Production browser passed: all keypad buttons and arithmetic rows fit seven phone viewports, fixed map header and visible rows, full-screen briefings, touch swipe with release wobble, backup arrows, ten levels and boss victory, no overflow or JS errors. Screenshots: browser-check/');
   await send('Browser.close').catch(()=>{});
 }finally{
   socket?.close();browser.kill();server.kill();await sleep(300);

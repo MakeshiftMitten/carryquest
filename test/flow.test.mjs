@@ -12,13 +12,12 @@ async function game(){
  const enter=()=>run('node=worlds[(run.room-1)%10][2];enterLevel()');
  const solve=()=>{let guard=0;while(!run('locked')&&guard++<100)run('act(expectedStep(work))');assert.ok(guard<100);flush();};
  const pointer=(type,{x=100,y=150,id=1,primary=true,button=0,backup=false}={})=>handlers[type]({clientX:x,clientY:y,pointerId:id,isPrimary:primary,button,preventDefault(){},target:{closest:s=>s==='[data-swipe]'?backup:s==='.board'}});
- return {root,run,flush,key,click,enter,solve,pointer,change:id=>handlers.change({target:{matches:s=>s==="[data-user]",value:id}}),advance:ms=>{now+=ms;run('updateTimer()');}};
+ return {root,run,flush,key,click,enter,solve,pointer,change:checked=>handlers.change({target:{matches:s=>s==="[data-endless]",checked}}),advance:ms=>{now+=ms;run('updateTimer()');}};
 }
 test('ten rows, perks, and ten-question boss victory',async()=>{
  const g=await game(),{run,root,solve,key}=g;
- assert.match(root.innerHTML,/data-login/);assert.equal(run('telemetry.data.runs.length'),0);
+ assert.doesNotMatch(root.innerHTML,/data-login/);assert.equal((root.innerHTML.match(/data-mode=/g)||[]).length,3);assert.equal(run('telemetry.data.runs.length'),0);
  g.click('[data-open-insights]');assert.match(root.innerHTML,/Learning metrics/);g.key('Escape');
- g.click('[data-login]');assert.match(root.innerHTML,/Local login/);g.click('[data-home]');
  run('restart()');assert.match(root.innerHTML,/Rainbow trail/);assert.equal(run('worlds[0].length'),5);assert.equal(run('run.hp'),3);
  for(let row=0;row<10;row++){
   g.enter();const start=run('run.jump');assert.equal(run('problemIndex'),start);
@@ -46,7 +45,7 @@ test('road perks change future levels with a valid minimum',async()=>{
  run('offered=[...RELICS];overlay="relic"');g.click('[data-relic]',{relic:'hard'});assert.equal(run('JSON.stringify(worlds[0])'),past);
  assert.deepEqual(Array.from(run('worlds[1].map(levelScore)')),Array.from(before,n=>n+5));
  run('offered=[...RELICS];overlay="relic"');g.click('[data-relic]',{relic:'easy'});
- run('worlds.flat().forEach(n=>tuneLevel(n,-100))');assert.equal(run('worlds.flat().every(n=>levelScore(n)===4)'),true);
+ run('worlds.flat().forEach(n=>tuneLevel(n,-100))');assert.equal(run('worlds.flat().every(n=>levelScore(n)===0)'),true);
 
 });
 test('boss difficulty returns to baseline after a setback and retry',async()=>{
@@ -171,7 +170,36 @@ test('backup arrows operate the required column and board swipes ignore result-e
  assert.equal(run('work.top[0]'),2);g.click('[data-swipe]',{swipe:'up'});assert.equal(run('work.top[1]'),10);
 });
 
-test('profile selection still switches the active player',async()=>{
- const g=await game(),id=g.run('telemetry.addUser("Second").id');g.run('telemetry.setActiveUser(telemetry.data.users[0].id)');
- g.change(id);assert.equal(g.run('telemetry.data.activeUserId'),id);
+test('difficulty buttons and unlimited checkbox configure a fresh three-life run',async()=>{
+ for(let mode=0;mode<3;mode++){
+  const g=await game();g.change(true);g.click('[data-mode]',{mode:String(mode)});
+  assert.equal(g.run('run.mode'),mode);assert.equal(g.run('run.endless'),true);
+  assert.equal(g.run('run.hp'),3);assert.equal(g.run('levelScore(worlds[0][0])'),mode*5);
+  g.click('[data-home]');g.change(false);g.click('[data-mode]',{mode:String(mode)});
+  assert.equal(g.run('run.endless'),false);
+ }
+});
+
+test('unlimited crosses two map boundaries with perks, roads and three lives, then records only the ended run',async()=>{
+ const g=await game(),{run}=g;g.change(true);g.click('[data-mode]',{mode:'0'});
+ for(let row=0;row<21;row++){
+  assert.equal(run('overlay'),null);assert.equal(run('run.room'),row+1);
+  assert.equal(run('worlds[0][0].stage'),Math.floor(row/10)*10);
+  assert.equal(run('worlds.flat().filter(reachable).length'),row?3:5);
+  g.enter();assert.equal(run('node.stage'),row);
+  for(let q=run('run.jump');q<run('questionCount()');q++)g.solve();
+  assert.equal(run('overlay'),'relic');
+  assert.equal(run('telemetry.summaryForUser(activeUser().id).runs'),0);
+  run('offered=[...RELICS]');g.click('[data-relic]',{relic:row===0?'easy':row===1?'hard':row===2?'jumpstart':'snack'});
+  assert.equal(run('run.hp'),3);assert.equal(run('isBoss()'),false);
+  if(row===9||row===19){
+   assert.ok(run('run.horn.length')>0);assert.equal(run('run.jump'),1);
+   assert.equal(run('JSON.stringify(worlds)'),run('JSON.stringify(makeMap(run.seed,run.room-1,run.mode).map(row=>row.map(n=>tuneLevel(tuneLevel(n,-5),5))))'));
+  }
+ }
+ for(let life=2;life>=0;life--){
+  g.enter();run('problemIndex=0;node.strictness=5;act({kind:"digit",digit:99})');g.flush();assert.equal(run('run.hp'),life);
+  if(life)g.click('[data-map]');
+ }
+ assert.equal(run('overlay'),'lose');assert.equal(run('telemetry.summaryForUser(activeUser().id).runs'),1);
 });

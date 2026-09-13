@@ -7,19 +7,21 @@ const RELICS=[
   {id:"pegacorn",icon:"🪽",name:"Pegacorn",copy:"Next row: reach two lanes."},
   {id:"jumpstart",icon:"⚡",name:"Jumpstart",copy:"Start +1 question (max +3)."},
   {id:"hard",icon:"▲",name:"Hard Road",copy:"Remaining map difficulties +5."},
-  {id:"easy",icon:"▼",name:"Easy Road",copy:"Future difficulties −5 (minimum 4)."}
+  {id:"easy",icon:"▼",name:"Easy Road",copy:"Future difficulties −5 (minimum 0)."}
 ];
 const SEED=0xc0ffee,root=document.querySelector("#app");
 const clock=()=>globalThis.performance?.now()??0;
 const freshSeed=()=>crypto.getRandomValues(new Uint32Array(1))[0];
-const newRun=(seed=SEED)=>({id:uid("run"),seed,room:1,hp:3,maxHp:3,reach:1,jump:0,horn:[],score:0,perks:{}});
+let mode=1,endless=false;
+const newRun=(seed=SEED)=>({id:uid("run"),seed,mode,endless,roads:[],room:1,hp:3,maxHp:3,reach:1,jump:0,horn:[],score:0,perks:{}});
 
 const telemetry=createTelemetryStore();
 if(!telemetry.data.activeUserId)telemetry.addUser("Player 1");
 const globalProvider=globalThis.carryQuestGlobalMetricsProvider??localGlobalMetricsProvider(telemetry);
 let run=newRun(),work=null,mistakes=0,feedback="Start on the right.",tone="neutral",shake=false,locked=false,overlay=null,insights=false,insightScope="lifetime",globalMetrics=telemetry.summaryGlobal(),globalLoading=false;
 let startedAt=clock(),stepStartedAt=startedAt,runFinished=false,deadline=0,problemDeadline=Infinity,pausedAt=0,attempt=0;
-let screen="start",worlds=makeMap(run.seed),node=null,problemIndex=0,pathTaken=[],audioContext,muted=false,perkInfo=null,offered=[];
+let screen="start",worlds=makeMap(run.seed,0,run.mode),node=null,problemIndex=0,pathTaken=[],audioContext,muted=false,perkInfo=null,offered=[];
+const isBoss=()=>!run.endless&&run.room>10;
 const questionCount=()=>node.questions;
 const stepSeconds=()=>seconds(node.speed)+(work.problem.operation==="×"?2:0);
 
@@ -72,17 +74,16 @@ function chime(good){
 }
 const reachable=n=>n.stage===run.room-1&&(!pathTaken.length||Math.abs(n.lane-pathTaken.at(-1))<=run.reach);
 function selectWorld(lane){
-  if(screen!=='map'||overlay||insights||run.room>10)return;
-  const chosen=worlds[run.room-1][lane];if(chosen&&reachable(chosen)){node=chosen;overlay='briefing';render();}
+  if(screen!=='map'||overlay||insights||isBoss())return;
+  const chosen=worlds[(run.room-1)%10][lane];if(chosen&&reachable(chosen)){node=chosen;overlay='briefing';render();}
 }
-const pieceDots=pieces=>pieces.map(i=>'<i style="background:'+PALETTE[i]+'" title="'+COLORS[i]+'">'+(run.horn.includes(i)?'✓':'')+'</i>').join('');
 function horn(){return '<div class="horn" aria-label="Horn: '+run.horn.length+' of 7 colors">'+COLORS.map((name,i)=>'<i style="width:'+(14+i*10)+'px;background:'+PALETTE[i]+';opacity:'+(run.horn.includes(i)?1:.3)+'" title="'+name+(run.horn.includes(i)?' collected':' missing')+'"></i>').join('')+'</div>';}
 function overworld(){
   let lines="";
   for(let row=0;row<worlds.length-1;row++)for(const n of worlds[row])for(const next of worlds[row+1])if(Math.abs(n.lane-next.lane)<=1)lines+='<line x1="'+n.x+'" y1="'+n.y+'" x2="'+next.x+'" y2="'+next.y+'"/>';
-  return '<section class="route"><div class="horn-heading">'+horn()+'<div><h1>Rainbow trail</h1><p>'+run.horn.length+'/7 horn colors'+'</p><small>Row '+run.room+' · reach ±'+run.reach+' · start Q'+(run.jump+1)+'</small></div></div><div class="map-window"><div class="star-map"><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">'+lines+'</svg>'+worlds.flat().map(n=>'<button class="planet difficulty-'+(levelScore(n)<9?0:levelScore(n)<14?1:2)+(pathTaken[n.stage]===n.lane?' visited':'')+'" style="left:'+n.x+'%;top:'+n.y+'%" data-world="'+n.lane+'" '+(reachable(n)?'':'disabled')+' aria-label="Row '+(n.stage+1)+', '+n.theme+', score '+levelScore(n)+', '+n.pieces.map(i=>COLORS[i]).join(' and ')+'"><b>'+n.theme+'</b><small>'+levelScore(n)+(n.challenge?' ★':'')+'</small><span class="pieces">'+pieceDots(n.pieces)+'</span></button>').join('')+'</div></div><small>★ Two colors · tap for rules.</small></section>';
+  return '<section class="route"><div class="horn-heading">'+horn()+'<div><h1>Rainbow trail</h1><p>'+run.horn.length+'/7 horn colors'+'</p><small>Row '+run.room+' · reach ±'+run.reach+' · start Q'+(run.jump+1)+'</small></div></div><div class="map-window"><div class="star-map"><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">'+lines+'</svg>'+worlds.flat().map(n=>'<button class="planet difficulty-'+(levelScore(n)<9?0:levelScore(n)<14?1:2)+(pathTaken[n.stage]===n.lane?' visited':'')+'" style="left:'+n.x+'%;top:'+n.y+'%;--piece-a:'+PALETTE[n.pieces[0]]+';--piece-b:'+PALETTE[n.pieces.at(-1)]+'" data-world="'+n.lane+'" '+(reachable(n)?'':'disabled')+' aria-label="Row '+(n.stage+1)+', '+n.theme+', score '+levelScore(n)+', '+n.pieces.map(i=>COLORS[i]).join(' and ')+'"><b>'+n.theme+'</b><small>'+levelScore(n)+(n.challenge?' ★':'')+'</small></button>').join('')+'</div></div><small>★ Two colors · tap for rules.</small></section>';
 }
-function home(){return '<section class="start"><div class="ship">🦄</div><h1>Carry Quest</h1><p>Build your rainbow unicorn horn.</p><button data-restart>Start</button><button data-open-insights>Stats</button><button data-login>Login</button><small>Playing as '+escapeHtml(activeUser().username)+'</small></section>';}
+function home(){return '<section class="start"><div class="ship">🦄</div><h1>Carry Quest</h1><p>Build your rainbow unicorn horn.</p><label class="endless"><input type="checkbox" data-endless '+(endless?'checked':'')+'> Unlimited trail <small>Endless levels · three lives</small></label>'+['Easy','Medium','Hard'].map((name,i)=>'<button data-mode="'+i+'"><strong>'+name+'</strong><small>Start '+(i*5)+' · +'+['1','1–2','2–3'][i]+' per level</small></button>').join('')+'<button data-open-insights>Stats</button></section>';}
 
 function scopedInsightsDialog(){
   const user=activeUser(),m=insightScope==='global'?globalMetrics:insightScope==='lifetime'?telemetry.summaryForUser(user.id):telemetry.summaryForRun(run.id);
@@ -91,8 +92,8 @@ function scopedInsightsDialog(){
 
 const bossRule=()=>"Difficulty starts at 6; solved / failed question: + / - "+(7-run.horn.length)+". Minimum 6.";
 function levelRules(){return [
-  [node.theme,'Operation points: + 1, − 2, × 4; +1 per extra type.'],
-  ['★ '+levelScore(node),(node.boss!=null?'Boss':operationScore(node.theme)+' operations + '+node.difficulty+' arithmetic + '+node.speed+' speed + '+node.strictness+' strictness + '+(questionCount()-5)+' extra questions')+'. Win points = difficulty − all mistakes.'],
+  [node.theme,'Operations: +1, −2, ×4; +1 per extra type. Basic + is included.'],
+  ['★ '+levelScore(node),(node.boss!=null?'Boss':(operationScore(node.theme)-1)+' mix + '+(node.difficulty-1)+' arithmetic + '+(node.speed-1)+' speed + '+(node.strictness-1)+' strictness + '+(questionCount()-5)+' extra questions')+'. Win points = difficulty − all mistakes.'],
   ['⏱ '+seconds(node.speed)+'s','Per step; +2s for ×. '+(node.stage<3?'Step timer only.':'Problem budget: 80% of steps × step time; never resets.')],
   ['✕ '+allowance(node.strictness),'Level mistake pool: '+allowance(node.strictness)+' ('+(overlay==='briefing'?0:mistakes)+' used). Each extra miss or timeout goes back one question.'],
   ['Q '+questionCount(),'Correct: advance one. Below Q1: lose a life. Solve Q'+questionCount()+': win '+(node.boss!=null?'the run.':'the level and choose a perk.')],
@@ -113,11 +114,10 @@ function overlayDialog(){
 
 function render(center=false){
   const scroll=center?undefined:document.querySelector(".map-window")?.scrollTop;
-  root.innerHTML=`<main class="game-shell ${shake?"shake":""}"><div class="game-frame ${screen==='map'?'map-view':''}">
-    <div class="user-bar" ${screen==="login"?"":"hidden"}><label>Player <select data-user>${telemetry.data.users.map(user=>`<option value="${user.id}" ${user.id===telemetry.data.activeUserId?"selected":""}>${escapeHtml(user.username)}</option>`).join("")}</select></label><button data-add-user>+ Add user</button></div>
+  root.innerHTML=`<main class="game-shell ${shake?"shake":""}"><div class="game-frame ${screen==='map'?'map-view':screen==='battle'?'battle-view':''}">
     <header class="topbar"><strong>Carry Quest</strong><button class="insight-button" data-home>Home</button><button class="insight-button" data-sound>${muted?"Sound off":"Sound on"}</button><button class="insight-button" data-open-insights>▥ Insights</button></header>
     ${screen==="map"||screen==="battle"?statusBar():""}
-    ${screen==="start"?home():screen==="login"?'<section class="start"><h1>Local login</h1><p>Select or add a local player.</p><button data-home>Done</button></section>':screen==="map"?overworld():`<div class="level-tools"><div class="rule-icons">${levelRules().map(([icon,rule])=>'<span title="'+rule+'">'+icon+'</span>').join('')}</div><button class="pause-button" data-pause ${locked?"disabled":""}>Ⅱ PAUSE</button></div><div class="countdown"><label>Step <span id="time">${locked?'—':stepSeconds()+'s'}</span></label><progress id="timer" max="${stepSeconds()}" value="${locked?0:stepSeconds()}" aria-label="Step seconds remaining"></progress><small id="total-time"></small></div><p class="world-label">${run.room>10?'Boss':'Row '+run.room} · difficulty ${levelScore(node)} · Question ${Math.max(1,Math.min(questionCount(),problemIndex+1))} / ${questionCount()}</p><div class="question-track">${Array.from({length:questionCount()},(_,i)=>'<b class="'+(i===problemIndex?'current':i<problemIndex?'done':'')+'">'+(i+1)+'</b>').join('')}</div>
+    ${screen==="start"?home():screen==="map"?overworld():`<div class="level-tools"><div class="rule-icons">${levelRules().map(([icon,rule])=>'<span title="'+rule+'">'+icon+'</span>').join('')}</div><button class="pause-button" data-pause ${locked?"disabled":""}>Ⅱ PAUSE</button></div><div class="countdown"><label>Step <span id="time">${locked?'—':stepSeconds()+'s'}</span></label><progress id="timer" max="${stepSeconds()}" value="${locked?0:stepSeconds()}" aria-label="Step seconds remaining"></progress><small id="total-time"></small></div><p class="world-label">${isBoss()?'Boss':'Row '+run.room} · difficulty ${levelScore(node)} · Question ${Math.max(1,Math.min(questionCount(),problemIndex+1))} / ${questionCount()}</p><div class="question-track">${Array.from({length:questionCount()},(_,i)=>'<b class="'+(i===problemIndex?'current':i<problemIndex?'done':'')+'">'+(i+1)+'</b>').join('')}</div>
     ${board()}<div class="prompt ${tone}" aria-live="polite"><strong>${promptFor(work)}</strong><span>${feedback}</span></div>
     <section class="keypad" aria-label="Number pad">${[1,2,3,4,5,6,7,8,9,0].map(digit=>`<button data-digit="${digit}" ${locked?"disabled":""}>${digit}</button>`).join("")}</section>`}
   </div>${insights?scopedInsightsDialog():""}${overlayDialog()}</main>`;
@@ -153,12 +153,12 @@ function questionDone(good){
   const current=work;
   setTimeout(()=>{
     if(screen!=="battle"||work!==current)return;
-    if(run.room>10)tuneLevel(node,(good?1:-1)*(7-run.horn.length));
+    if(isBoss())tuneLevel(node,(good?1:-1)*(7-run.horn.length));
     problemIndex+=good?1:-1;
     if(problemIndex<0){run.hp--;overlay=run.hp?'failed':'lose';if(!run.hp)finishRun('lost');}
     else if(problemIndex===questionCount()){
       const points=levelScore(node)-mistakes;run.score+=points;record({type:'level',difficulty:levelScore(node),mistakes,points,room:run.room});
-      if(run.room>10){overlay='win';finishRun('won');}
+      if(isBoss()){overlay='win';finishRun('won');}
       else{run.horn=[...new Set([...run.horn,...node.pieces])];pathTaken.push(node.lane);offerPerks();overlay='relic';}
     }
     else begin();
@@ -195,18 +195,22 @@ function chooseRelic(id){
   if(id==='snack')run.hp=Math.min(3,run.hp+1);
   if(id==='jumpstart')run.jump++;
   if(id==='hard'||id==='easy'){
-    const change=id==='hard'?5:-5;
+    const change=id==='hard'?5:-5;run.roads.push(change);
     worlds.flat().filter(n=>n.stage>=run.room).forEach(n=>tuneLevel(n,change));
   }
   record({type:"perk",perk:id,room:run.room});
-  run.room++;overlay=run.room>10?'boss':null;screen="map";
+  run.room++;if(run.endless&&run.room%10===1)nextMap(run.room-1);overlay=isBoss()?'boss':null;screen="map";
   render();
 }
 
+function nextMap(offset=0){
+  worlds=makeMap(run.seed,offset,run.mode);
+  for(const n of worlds.flat())for(const change of run.roads)tuneLevel(n,change);
+}
 function restart(){
   finishRun("abandoned");
-  const seed=freshSeed(),next=newRun(seed);run=next;runFinished=false;overlay=null;screen="map";worlds=makeMap(seed);pathTaken=[];node=null;perkInfo=null;telemetry.startRun({id:next.id,seed});
-  record({at:new Date().toISOString(),runId:next.id,type:"run",seed,room:1});render();
+  const seed=freshSeed(),next=newRun(seed);run=next;runFinished=false;overlay=null;screen="map";nextMap();pathTaken=[];node=null;perkInfo=null;telemetry.startRun({id:next.id,seed});
+  record({at:new Date().toISOString(),runId:next.id,type:"run",seed,room:1,mode:run.mode,endless:run.endless});render();
 }
 
 function exportTelemetry(){
@@ -228,10 +232,6 @@ async function loadGlobalMetrics(){
   globalLoading=false;if(insights)render();
 }
 
-function switchUser(id){
-  if(id===telemetry.data.activeUserId)return;
-  finishRun("abandoned");telemetry.setActiveUser(id);screen="start";overlay=null;insights=false;render();
-}
 
 function resumeTimers(){const pause=clock()-pausedAt;deadline+=pause;problemDeadline+=pause;startedAt+=pause;stepStartedAt+=pause;}
 function closeInsights(){resumeTimers();insights=false;render();}
@@ -263,18 +263,17 @@ window.addEventListener("resize",()=>{drag=null;render(true);});
 root.addEventListener("click",event=>{
   const target=event.target.closest("button,[data-close-insights]");if(!target)return;
   const has=name=>target.matches("[data-"+name+"]");
-  if(has("pause"))togglePause();
+  if(has("mode")){mode=Number(target.dataset.mode);restart();}
+  else if(has("pause"))togglePause();
   else if(has("boss"))enterBoss();
   else if(has("owned")){const r=RELICS.find(r=>r.id===target.dataset.owned);perkInfo=perkInfo===r?null:r;render();}
   else if(has("enter"))enterLevel();
-  else if(has("map")){overlay=run.room>10?'boss':null;screen="map";render();}
+  else if(has("map")){overlay=isBoss()?'boss':null;screen="map";render();}
   else if(has("swipe"))swipe(target.dataset.swipe);
   else if(has("digit"))act({kind:"digit",digit:Number(target.dataset.digit)});
   else if(has("open-insights")){if(overlay==='pause'||screen==='battle'&&locked&&!overlay)return;pausedAt=clock();insights=true;if(insightScope==='global')loadGlobalMetrics();else render();}
   else if(has("close-insights")&&(target===event.target||target.tagName==="BUTTON"))closeInsights();
-  else if(has("add-user")){const name=prompt("New username");if(name?.trim()){finishRun("abandoned");telemetry.addUser(name);screen="start";render();}}
   else if(has("home")){if(screen==="battle"&&locked&&!overlay)return;finishRun("abandoned");screen="start";overlay=null;render();}
-  else if(has("login")){screen="login";render();}
   else if(has("sound")){muted=!muted;render();}
   else if(has("world"))selectWorld(Number(target.dataset.world));
   else if(has("scope")){insightScope=target.dataset.scope;if(insightScope==="global")loadGlobalMetrics();else render();}
@@ -284,7 +283,7 @@ root.addEventListener("click",event=>{
   else if(has("export-run"))exportRun(target.dataset.exportRun);
 });
 
-root.addEventListener("change",event=>{if(event.target.matches("[data-user]"))switchUser(event.target.value);});
+root.addEventListener("change",event=>{if(event.target.matches("[data-endless]"))endless=event.target.checked;});
 
 window.addEventListener("keydown",event=>{
   if(insights&&event.key==="Escape"){closeInsights();return;}

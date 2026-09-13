@@ -14,7 +14,7 @@ test('operation presence and additional questions contribute the exact points',(
   assert.deepEqual(themes.map(operationScore),[1,2,4,4,6,7,9]);
   const counts=new Set();for(let seed=0;seed<50;seed++)for(const n of makeMap(seed).flat()){
     assert.ok(n.questions>=5&&n.questions<=10);counts.add(n.questions);
-    assert.equal(levelScore(n),operationScore(n.theme)+n.difficulty+n.speed+n.strictness+n.questions-5);
+    assert.equal(levelScore(n),operationScore(n.theme)+n.difficulty+n.speed+n.strictness+n.questions-9);
   }
   assert.equal(counts.size,6);
 });
@@ -24,10 +24,10 @@ test("difficulty rises each row and a complete rainbow is reachable",()=>{
   let challenges=0;
   for(let seed=0;seed<100;seed++){
     const map=makeMap(seed);assert.equal(map.length,10);
-    let paths=[{lane:2,mask:0}],previousMax=0;
+    let paths=[{lane:2,mask:0}],previousBase=4;
     for(const row of map){
       assert.equal(row.length,5);
-      const scores=row.map(levelScore);assert.ok(Math.min(...scores)>=previousMax);previousMax=Math.max(...scores);
+      const scores=row.map(n=>levelScore(n)-(n.challenge?2:0));assert.ok(scores.every(s=>s===scores[0]));assert.ok(scores[0]>previousBase);previousBase=scores[0];
       for(const n of row){assert.ok(n.speed>=1&&n.speed<=10);assert.ok(n.difficulty>=1);assert.ok(n.strictness>=1&&n.strictness<=5);assert.equal(n.pieces.length,n.challenge?2:1);if(n.challenge){challenges++;assert.notEqual(...n.pieces);}}
       const next=new Map();for(const p of paths)for(const n of row)if(Math.abs(p.lane-n.lane)<=1){const mask=n.pieces.reduce((m,c)=>m|1<<c,p.mask);next.set(n.lane+':'+mask,{lane:n.lane,mask});}paths=[...next.values()];
     }
@@ -49,7 +49,7 @@ test("generated arithmetic solves correctly across 100 galaxies",()=>{
 });
 test("road and boss difficulty extends beyond 18 with valid arithmetic and timers",()=>{
   for(const delta of [-100,-5,5,35,65])for(const original of makeMap(123).flat()){
-    const n=tuneLevel({...original},delta);assert.equal(levelScore(n),Math.max(4,levelScore(original)+delta));
+    const n=tuneLevel({...original},delta);assert.equal(levelScore(n),Math.max(0,levelScore(original)+delta));
     assert.ok(seconds(n.speed)>=1);assert.ok(allowance(n.strictness)>=0);
     for(let i=0;i<3;i++){
       const p=worldProblem(n,i);if(p.operation==='×')assert.ok(p.bottom>=1&&p.bottom<=9);let s=startProblem(p),steps=0;
@@ -57,4 +57,17 @@ test("road and boss difficulty extends beyond 18 with valid arithmetic and timer
       assert.ok(s.complete);assert.equal(Number(s.answer.join('')),p.operation==='+'?p.top+p.bottom:p.operation==='−'?p.top-p.bottom:p.top*p.bottom);
     }
   }
+});
+
+test('presets start at zero, five and ten and progress consistently across endless batches',()=>{
+ for(let mode=0;mode<3;mode++)for(let seed=0;seed<20;seed++){
+  let previous;
+  for(const offset of [0,10,20])for(const row of makeMap(seed,offset,mode)){
+   const base=levelScore(row[0])-(row[0].challenge?2:0);
+   if(previous===undefined)assert.equal(base,mode*5);
+   else assert.ok(mode?base-previous>=mode&&base-previous<=mode+1:base-previous===1);
+   assert.ok(row.every(n=>levelScore(n)===base+(n.challenge?2:0)));
+   previous=base;
+  }
+ }
 });
