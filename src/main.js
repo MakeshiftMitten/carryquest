@@ -95,7 +95,7 @@ function levelRules(){return [
   [node.theme,'Operations: +1, −2, ×4; +1 per extra type. Basic + is included.'],
   ['★ '+levelScore(node),(node.boss!=null?'Boss':(operationScore(node.theme)-1)+' mix + '+(node.difficulty-1)+' arithmetic + '+(node.speed-1)+' speed + '+(node.strictness-1)+' strictness + '+(questionCount()-5)+' extra questions')+'. Win points = difficulty − all mistakes.'],
   ['⏱ '+seconds(node.speed)+'s','Per step; +2s for ×. '+(node.stage<3?'Step timer only.':'Problem budget: 80% of steps × step time; never resets.')],
-  ['✕ '+allowance(node.strictness),'Level mistake pool: '+allowance(node.strictness)+' ('+(overlay==='briefing'?0:mistakes)+' used). Each extra miss or timeout goes back one question.'],
+  ['X: '+Math.max(0,allowance(node.strictness)-(overlay==='briefing'?0:mistakes)),'Level mistake pool: '+allowance(node.strictness)+' ('+(overlay==='briefing'?0:mistakes)+' used). Each extra miss or timeout goes back one question.'],
   ['Q '+questionCount(),'Correct: advance one. Below Q1: lose a life. Solve Q'+questionCount()+': win '+(node.boss!=null?'the run.':'the level and choose a perk.')],
   ['↕','Right to left. Carry: swipe ↑ / ↓ by one (0–9); enter the final digit. Follow arrows to borrow.']
 ].concat(node.boss==null?[]:[['Boss',bossRule()]]);}
@@ -117,7 +117,7 @@ function render(center=false){
   root.innerHTML=`<main class="game-shell ${shake?"shake":""}"><div class="game-frame ${screen==='map'?'map-view':screen==='battle'?'battle-view':''}">
     <header class="topbar"><strong>Carry Quest</strong><button class="insight-button" data-home>Home</button><button class="insight-button" data-sound>${muted?"Sound off":"Sound on"}</button><button class="insight-button" data-open-insights>▥ Insights</button></header>
     ${screen==="map"||screen==="battle"?statusBar():""}
-    ${screen==="start"?home():screen==="map"?overworld():`<div class="level-tools"><div class="rule-icons">${levelRules().map(([icon,rule])=>'<span title="'+rule+'">'+icon+'</span>').join('')}</div><button class="pause-button" data-pause ${locked?"disabled":""}>Ⅱ PAUSE</button></div><div class="countdown"><label>Step <span id="time">${locked?'—':stepSeconds()+'s'}</span></label><progress id="timer" max="${stepSeconds()}" value="${locked?0:stepSeconds()}" aria-label="Step seconds remaining"></progress><small id="total-time"></small></div><p class="world-label">${isBoss()?'Boss':'Row '+run.room} · difficulty ${levelScore(node)} · Question ${Math.max(1,Math.min(questionCount(),problemIndex+1))} / ${questionCount()}</p><div class="question-track">${Array.from({length:questionCount()},(_,i)=>'<b class="'+(i===problemIndex?'current':i<problemIndex?'done':'')+'">'+(i+1)+'</b>').join('')}</div>
+    ${screen==="start"?home():screen==="map"?overworld():`<div class="level-tools"><div class="rule-icons">${levelRules().map(([icon,rule])=>'<span title="'+rule+'">'+icon+'</span>').join('')}</div><button class="pause-button" data-pause ${locked?"disabled":""}>Ⅱ PAUSE</button></div><div class="countdown"><label>Step <small id="total-time"></small><span id="time">${locked?'—':stepSeconds()+'s'}</span></label><progress id="timer" max="${stepSeconds()}" value="${locked?0:stepSeconds()}" aria-label="Step seconds remaining"></progress></div><p class="world-label">${isBoss()?'Boss':'Row '+run.room} · difficulty ${levelScore(node)} · Question ${Math.max(1,Math.min(questionCount(),problemIndex+1))} / ${questionCount()}</p><div class="question-track">${Array.from({length:questionCount()},(_,i)=>'<b class="'+(i===problemIndex?'current':i<problemIndex?'done':'')+'">'+(i+1)+'</b>').join('')}</div>
     ${board()}<div class="prompt ${tone}" aria-live="polite"><strong>${promptFor(work)}</strong><span>${feedback}</span></div>
     <section class="keypad" aria-label="Number pad">${[1,2,3,4,5,6,7,8,9,0].map(digit=>`<button data-digit="${digit}" ${locked?"disabled":""}>${digit}</button>`).join("")}</section>`}
   </div>${insights?scopedInsightsDialog():""}${overlayDialog()}</main>`;
@@ -144,7 +144,7 @@ function updateTimer(){
   if(screen!=="battle"||locked||overlay||insights)return;
   const now=clock(),left=Math.max(0,(deadline-now)/1000),label=document.querySelector('#time'),bar=document.querySelector('#timer'),total=document.querySelector('#total-time');
   if(label)label.textContent=left.toFixed(1)+'s';if(bar)bar.value=left;
-  if(total)total.textContent=(node.stage<3?'Step timer only':'Problem: '+Math.max(0,(problemDeadline-now)/1000).toFixed(1)+'s')+' · '+Math.max(0,allowance(node.strictness)-mistakes)+' mistakes left this level';
+  if(total)total.textContent=node.stage<3?'':'Problem: '+Math.max(0,(problemDeadline-now)/1000).toFixed(1)+'s';
   if(!left||now>=problemDeadline)failQuestion('Time ran out.',true);
 }
 function questionDone(good){
@@ -176,7 +176,7 @@ function act(action,meta={}){
   record({type:result.adjusting?"adjustment":"action",problemId:work.problem.id,phase:work.phase,place,expected:before,actual:action,correct:result.correct,errorCode:result.errorCode??null,latencyMs:Math.round(now-stepStartedAt),seed:work.problem.seed,room:run.room,...meta});
   if(!result.correct){
     mistakes++;if(mistakes>allowance(node.strictness)){failQuestion('Back one question.');return;}
-    chime(false);feedback=result.message+' '+(allowance(node.strictness)-mistakes)+' mistakes left.';tone="bad";shake=true;
+    chime(false);feedback=result.message;tone="bad";shake=true;
     const current=work;setTimeout(()=>{if(work===current){shake=false;render();}},220);
   }else{
     work=result.state;stepStartedAt=now;deadline=now+stepSeconds()*1000;feedback=result.message;tone=result.adjusting?"neutral":"good";if(!result.adjusting)chime(true);
