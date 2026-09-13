@@ -35,7 +35,12 @@ try{
   const script=await fetch(`${origin}/src/main.js`);
   assert.equal(script.status,200);
   assert.match(script.headers.get("content-type")??"",/^text\/javascript/);
-  assert.doesNotMatch(await script.text(),/import\s+["']\.\/style\.css["']/);
+  const source=await script.text();
+  assert.doesNotMatch(source,/import\s+["']\.\/style\.css["']/);
+  assert.match(source,/Rainbow trail/);
+  const world=await fetch(`${origin}/src/world.js`);
+  assert.equal(world.status,200);
+  assert.match(await world.text(),/export function makeMap/);
 
   const style=await fetch(`${origin}/src/style.css`);
   assert.equal(style.status,200);

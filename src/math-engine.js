@@ -1,16 +1,3 @@
-export const DEMO_PROBLEMS=[
-  {top:47,bottom:38,operation:"+",mechanic:"carry"},
-  {top:62,bottom:27,operation:"−",mechanic:"borrow"},
-  {top:168,bottom:257,operation:"+",mechanic:"carry"},
-  {top:302,bottom:178,operation:"−",mechanic:"borrow-chain"},
-  {top:700,bottom:286,operation:"−",mechanic:"borrow-chain"}
-];
-
-export function problemForRoom(room,seed){
-  const problem=DEMO_PROBLEMS[(room-1)%DEMO_PROBLEMS.length];
-  return {...problem,id:`p-${seed.toString(36)}-${room}`,seed:(seed^Math.imul(room,2654435761))>>>0,width:Math.max(String(problem.top).length,String(problem.bottom).length),room};
-}
-
 const digits=(value,width)=>String(value).padStart(width,"0").split("").map(Number);
 
 export function placeName(column,width){
@@ -35,17 +22,23 @@ function prepare(state,column){
 }
 
 export function startProblem(problem){
+  if(problem.operation==="×"&&(!Number.isInteger(problem.bottom)||problem.bottom<0||problem.bottom>9))throw new Error("Multiplier must be one digit");
   const top=digits(problem.top,problem.width);
-  return prepare({problem,originalTop:[...top],top,bottom:digits(problem.bottom,problem.width),carries:Array(problem.width).fill(0),answer:Array(problem.width+1).fill(null),activeColumn:problem.width-1,phase:"answer",queue:[],revision:0,complete:false},problem.width-1);
+  return prepare({problem,originalTop:[...top],top,bottom:digits(problem.bottom,problem.width),carries:Array(problem.width).fill(0),answer:Array(problem.width+1).fill(null),activeColumn:problem.width-1,phase:"answer",queue:[],complete:false},problem.width-1);
 }
+
+const columnValue=state=>{
+  const c=state.activeColumn;
+  return state.problem.operation==="×"?state.top[c]*state.problem.bottom+state.carries[c]:state.problem.operation==="+"?state.top[c]+state.bottom[c]+state.carries[c]:state.top[c]-state.bottom[c];
+};
 
 export function expectedStep(state){
   if(state.complete)return null;
   if(state.phase==="borrow")return state.queue[0]??null;
   if(state.phase==="carry")return {kind:"swipe",direction:"up",column:state.activeColumn-1,reason:"carry"};
-  if(state.phase==="leading")return {kind:"digit",digit:1,column:-1,reason:"leading"};
+  if(state.phase==="leading")return {kind:"digit",digit:state.leadingCarry,column:-1,reason:"leading"};
   const column=state.activeColumn;
-  const value=state.problem.operation==="+"?state.top[column]+state.bottom[column]+state.carries[column]:state.top[column]-state.bottom[column];
+  const value=columnValue(state);
   return {kind:"digit",digit:((value%10)+10)%10,column,reason:"answer"};
 }
 
@@ -53,13 +46,13 @@ function reject(state,expected,action){
   let errorCode="wrong_digit",message=`Check the ${placeName(expected.column,state.problem.width)} column.`;
   if(expected.kind==="swipe"&&action.kind==="digit"){
     errorCode=expected.reason==="carry"?"carry_skipped":"borrow_skipped";
-    message=expected.reason==="carry"?"Carry the ten before moving left.":"Finish the borrow before answering.";
+    message=expected.reason==="carry"?"Move the carry first.":"Borrow first.";
   }else if(expected.kind==="digit"&&action.kind==="swipe"){
     errorCode="unexpected_gesture";
-    message="That column is ready. Enter its result digit.";
+    message="Enter the result digit.";
   }else if(expected.kind==="swipe"&&action.kind==="swipe"){
-    if(expected.column!==action.column){errorCode="wrong_column";message="Work one column at a time, from right to left.";}
-    else {errorCode="wrong_direction";message=expected.direction==="up"?"Flick up to add the small 1.":"Flick down to give one away.";}
+    if(expected.column!==action.column){errorCode="wrong_column";message="Use the highlighted column.";}
+    else {errorCode="wrong_direction";message=expected.direction==="up"?"Flick up.":"Flick down.";}
   }
   return {state,expected,correct:false,errorCode,message};
 }
@@ -67,31 +60,34 @@ function reject(state,expected,action){
 export function applyAction(state,action){
   const expected=expectedStep(state);
   if(!expected)return {state,expected:null,correct:false,errorCode:"complete",message:"Done."};
+  if(state.phase==="carry"&&action.kind==="swipe"&&action.column===expected.column&&["up","down"].includes(action.direction)){
+    const carryDial=((state.carryDial??0)+(action.direction==="up"?1:9))%10,next={...state,carryDial};
+    if(carryDial!==state.pendingCarry)return {state:next,expected,correct:true,adjusting:true,message:"Adjust the carry."};
+    if(expected.column<0)return {state:{...next,leadingCarry:carryDial,phase:"leading"},expected,correct:true,message:"Carry set."};
+    const carries=[...state.carries];carries[expected.column]+=carryDial;
+    return {state:prepare({...next,carries},expected.column),expected,correct:true,message:"Carry set."};
+  }
   const matches=expected.kind===action.kind&&(expected.kind==="digit"?expected.digit===action.digit:expected.column===action.column&&expected.direction===action.direction);
   if(!matches)return reject(state,expected,action);
-  let next={...state,revision:state.revision+1};
+  let next={...state};
   if(expected.kind==="digit"){
     const answer=[...state.answer];
     if(state.phase==="leading"){
-      answer[0]=1;
+      answer[0]=expected.digit;
       next={...next,answer,phase:"complete",activeColumn:-1,complete:true};
     }else{
       answer[state.activeColumn+1]=expected.digit;
       next={...next,answer};
-      if(state.problem.operation==="+"){
-        const sum=state.top[state.activeColumn]+state.bottom[state.activeColumn]+state.carries[state.activeColumn];
-        next=sum>=10?{...next,phase:state.activeColumn===0?"leading":"carry"}:prepare(next,state.activeColumn-1);
+      if(state.problem.operation!=="−"){
+        const sum=columnValue(state);
+        next=sum>=10?{...next,phase:"carry",pendingCarry:Math.floor(sum/10),carryDial:0}:prepare(next,state.activeColumn-1);
       }else next=prepare(next,state.activeColumn-1);
     }
-  }else if(state.phase==="carry"){
-    const carries=[...state.carries];
-    carries[expected.column]+=1;
-    next=prepare({...next,carries},expected.column);
   }else{
     const top=[...state.top];
     top[expected.column]+=expected.direction==="up"?10:-1;
     const queue=state.queue.slice(1);
     next={...next,top,queue,phase:queue.length?"borrow":"answer"};
   }
-  return {state:next,expected,correct:true,message:next.complete?"Clean solve!":"Step locked in."};
+  return {state:next,expected,correct:true,message:next.complete?"Clean solve!":"Correct."};
 }

@@ -7,6 +7,7 @@
     "node": ">=24 <25"
   },
   "scripts": {
+    "zip": "node scripts/build.mjs && node scripts/zip.mjs",
     "play": "node scripts/serve.mjs --open",
     "play:mobile": "node scripts/serve.mjs --host 0.0.0.0",
     "dev": "node scripts/serve.mjs --root . --host 0.0.0.0 --open",
@@ -18,5 +19,10 @@
     "test": "node --test",
     "test:server": "node scripts/server-smoke.mjs",
     "verify": "node --test && node scripts/build.mjs && node scripts/check.mjs && node scripts/server-smoke.mjs && node scripts/size.mjs"
+  },
+  "devDependencies": {
+    "@gfx/zopfli": "1.0.15",
+    "esbuild": "0.28.2",
+    "terser": "5.51.2"
   }
 }
